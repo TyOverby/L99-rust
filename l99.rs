@@ -2,14 +2,14 @@
 
 #[deriving(Show, Eq)]
 enum List<E> {
-    Cons(E, ~List<E>),
+    Cons(E, Box<List<E>>),
     Nil
 }
 
 macro_rules! list(
     () => (Nil);
-    ($x: expr) => (Cons($x, ~Nil));
-    ($x: expr, $($rest: expr),*) => (Cons($x, ~list!($($rest),*)))
+    ($x: expr) => (Cons($x, box Nil));
+    ($x: expr, $($rest: expr),*) => (Cons($x, box list!($($rest),*)))
 )
 
 struct ListIter<E> {
@@ -32,15 +32,42 @@ impl <E> Iterator<E> for ListIter<E> {
 
 impl <E> List<E> {
     fn iter(self) -> ListIter<E> {
-        ListIter{current: Some(self)}
+        ListIter{ current: Some(self) }
     }
+}
+
+#[test]
+fn test_iterator() {
+    let v: Vec<uint> = vec![1,2,3,4];
+    let l: List<uint>  = list![1,2,3,4];
+    let v2 = l.iter().collect::<Vec<uint>>();
+    assert!(v == v2);
+}
+
+impl <E> FromIterator<E> for List<E> {
+    fn from_iter<T: Iterator<E>>(iterator: T) -> List<E> {
+        let mut iter = iterator;
+        let next = iter.next();
+        match next {
+            Some(x) => Cons(x, box FromIterator::from_iter(iter)),
+            None => Nil
+        }
+
+    }
+}
+
+#[test]
+fn from_iterator_test() {
+    let v: Vec<uint> = vec![1,2,3,4];
+    let l: List<uint>  = list![1,2,3,4];
+    assert!(v.move_iter().collect::<List<uint>>() == l);
 }
 
 fn last<E>(list: List<E>) -> Option<E> {
     match list {
         Nil => None,
-        Cons(x, ~Nil) => Some(x),
-        Cons(_, ~xs) => last(xs),
+        Cons(x, box Nil) => Some(x),
+        Cons(_, box xs) => last(xs),
     }
 }
 
@@ -53,9 +80,9 @@ fn test_last() {
 fn last_but_one<E>(list: List<E>) -> Option<E> {
     match list {
         Nil => None,
-        Cons(_, ~Nil) => None,
-        Cons(x, ~Cons(_, ~Nil)) => Some(x),
-        Cons(_, ~xs) => last_but_one(xs)
+        Cons(_, box Nil) => None,
+        Cons(x, box Cons(_, box Nil)) => Some(x),
+        Cons(_, box xs) => last_but_one(xs)
     }
 }
 #[test]
@@ -69,7 +96,7 @@ fn kth<E>(list: List<E>, pos: uint) -> Option<E> {
     match (list, pos) {
         (Nil, _) => None,
         (Cons(x, _), 0) => Some(x),
-        (Cons(_, ~xs), _) => kth(xs, pos - 1)
+        (Cons(_, box xs), _) => kth(xs, pos - 1)
     }
 }
 #[test]
@@ -82,7 +109,7 @@ fn test_kth() {
 fn length<E>(list: List<E>) -> uint {
     match list {
         Nil => 0,
-        Cons(_, ~xs) => 1 + length(xs)
+        Cons(_, box xs) => 1 + length(xs)
     }
 }
 #[test]
@@ -96,8 +123,8 @@ fn reverse<E>(list: List<E>) -> List<E> {
     let mut from = list;
     loop {
         match from {
-            Cons(x, ~xs) => {
-                res = Cons(x, ~res);
+            Cons(x, box xs) => {
+                res = Cons(x, box res);
                 from = xs;
             }
             Nil => break
